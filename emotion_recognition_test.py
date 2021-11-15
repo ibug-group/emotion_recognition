@@ -28,6 +28,8 @@ def main() -> None:
     parser.add_argument('--detection-weights', '-dw', default=None,
                         help='Weights to be loaded for face detection, ' +
                              'can be either resnet50 or mobilenet0.25 when using RetinaFace')
+    parser.add_argument('--detection-alternative-pth', '-dp', default=None,
+                        help='Alternative pth file to be loaded for face detection')
     parser.add_argument('--detection-device', '-dd', default='cuda:0',
                         help='Device to be used for face detection (default=cuda:0)')
 
@@ -36,14 +38,20 @@ def main() -> None:
     parser.add_argument('--alignment-method', '-am', default='fan',
                         help='Face alignment method, must be set to FAN')
     parser.add_argument('--alignment-weights', '-aw', default=None,
-                        help='Weights to be loaded for face alignment, can be either 2DFAN2 or 2DFAN4')
+                        help='Weights to be loaded for face alignment, can be either 2DFAN2, 2DFAN4, ' +
+                             'or 2DFAN2_ALT')
+    parser.add_argument('--alignment-alternative-pth', '-ap', default=None,
+                        help='Alternative pth file to be loaded for face alaignment')
     parser.add_argument('--alignment-device', '-ad', default='cuda:0',
                         help='Device to be used for face alignment (default=cuda:0)')
 
     parser.add_argument('--emotion-method', '-em', default='emonet',
                         help='Emotion recognition method, must be set to EmoNet')
     parser.add_argument('--emotion-weights', '-ew', default=None,
-                        help='Weights to be loaded for emotion recognition, can be either EmNet248 or EmoNet245')
+                        help='Weights to be loaded for emotion recognition, can be either ' +
+                             'EmoNet248, EmoNet245, EmoNet248_alt, or EmoNet245_alt')
+    parser.add_argument('--emotion-alternative-pth', '-ep', default=None,
+                        help='Alternative pth file to be loaded for emotion recognition')
     parser.add_argument('--emotion-device', '-ed', default='cuda:0',
                         help='Device to be used for emotion recognition (default=cuda:0)')
     args = parser.parse_args()
@@ -58,35 +66,46 @@ def main() -> None:
         # Create the face detector
         args.detection_method = args.detection_method.lower()
         if args.detection_method == 'retinaface':
-            face_detector = RetinaFacePredictor(threshold=args.detection_threshold, device=args.detection_device,
-                                                model=(RetinaFacePredictor.get_model(args.detection_weights)
-                                                       if args.detection_weights else None))
-            print('Face detector created using RetinaFace.')
+            face_detector_class = (RetinaFacePredictor, 'RetinaFace')
         elif args.detection_method == 's3fd':
-            face_detector = S3FDPredictor(threshold=args.detection_threshold, device=args.detection_device,
-                                          model=(S3FDPredictor.get_model(args.detection_weights)
-                                                 if args.detection_weights else None))
-            print('Face detector created using S3FD.')
+            face_detector_class = (S3FDPredictor, 'S3FD')
         else:
             raise ValueError('detector-method must be set to either RetinaFace or S3FD')
+        if args.detection_weights is None:
+            fd_model = face_detector_class[0].get_model()
+        else:
+            fd_model = face_detector_class[0].get_model(args.detection_weights)
+        if args.detection_alternative_pth is not None:
+            fd_model.weights = args.detection_alternative_pth
+        face_detector = face_detector_class[0](
+            threshold=args.detection_threshold, device=args.detection_device, model=fd_model)
+        print(f"Face detector created using {face_detector_class[1]} ({fd_model.weights}).")
 
         # Create the landmark detector
         args.alignment_method = args.alignment_method.lower()
         if args.alignment_method == 'fan':
-            landmark_detector = FANPredictor(device=args.alignment_device,
-                                             model=(FANPredictor.get_model(args.alignment_weights)
-                                                    if args.alignment_weights else None))
-            print('Landmark detector created using FAN.')
+            if args.alignment_weights is None:
+                fa_model = FANPredictor.get_model()
+            else:
+                fa_model = FANPredictor.get_model(args.alignment_weights)
+            if args.alignment_alternative_pth is not None:
+                fa_model.weights = args.alignment_alternative_pth
+            landmark_detector = FANPredictor(device=args.alignment_device, model=fa_model)
+            print(f"Landmark detector created using FAN ({fa_model.weights}).")
         else:
             raise ValueError('alignment-method must be set to FAN')
 
         # Create the emotion recogniser
         args.emotion_method = args.emotion_method.lower()
         if args.emotion_method == 'emonet':
-            emotion_recogniser = EmoNetPredictor(device=args.emotion_device,
-                                                 model=(EmoNetPredictor.get_model(args.emotion_weights)
-                                                        if args.emotion_weights else None))
-            print('Emotion recogniser created using EmoNet.')
+            if args.emotion_weights is None:
+                er_model = EmoNetPredictor.get_model()
+            else:
+                er_model = EmoNetPredictor.get_model(args.emotion_weights)
+            if args.emotion_alternative_pth is not None:
+                er_model.weights = args.emotion_alternative_pth
+            emotion_recogniser = EmoNetPredictor(device=args.emotion_device, model=er_model)
+            print(f"Emotion recogniser created using EmoNet ({er_model.weights}).")
         else:
             raise ValueError('emotion-method must be set to EmoNet')
 
